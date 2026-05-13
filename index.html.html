@@ -126,6 +126,23 @@ input[type=date]{background:var(--bg3);border:1px solid var(--border);color:var(
 .td-dn{font-size:13px;font-weight:600;color:var(--rose);margin-top:5px;}
 .td-n{font-size:13px;font-weight:600;color:var(--text3);margin-top:5px;}
 
+/* COMPARISON MODE SELECTOR */
+.cmp-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
+.cmp-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;white-space:nowrap;}
+.cmp-pill{display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:9999px;padding:4px 12px;font-size:11px;cursor:pointer;font-weight:500;transition:all 0.15s;white-space:nowrap;}
+.cmp-pill:hover{border-color:var(--indigo);color:var(--text);}
+.cmp-pill.active{background:rgba(99,102,241,0.18);border-color:var(--indigo);color:var(--indigo);font-weight:700;}
+.cmp-pill .cmp-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0;}
+.cmp-pill.active .cmp-dot{background:var(--indigo);}
+/* KPI delta line */
+.kpi-cmp{font-size:11px;color:var(--text3);margin-top:3px;}
+.kpi-cmp .up{color:var(--emerald);font-weight:700;}
+.kpi-cmp .dn{color:var(--rose);font-weight:700;}
+.kpi-cmp .neu{color:var(--text3);}
+/* Chart comparison legend */
+.cmp-legend{display:flex;align-items:center;gap:14px;font-size:11px;color:var(--text2);}
+.cmp-legend span{display:flex;align-items:center;gap:5px;}
+.cmp-legend i{display:inline-block;width:20px;height:2px;border-radius:1px;}
 .loading-overlay{display:flex;align-items:center;justify-content:center;height:300px;color:var(--text2);gap:12px;font-size:13px;}
 .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--indigo);border-radius:50%;animation:spin 0.7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
@@ -197,6 +214,13 @@ input[type=date]{background:var(--bg3);border:1px solid var(--border);color:var(
       <div class="fg"><label>Logística:</label><select id="fFulfillment" onchange="applyFilters()"><option value="">Todos</option></select></div>
       <div class="fg"><label>Desde:</label><input type="date" id="fDesde" onchange="applyFilters()"></div>
       <div class="fg"><label>Hasta:</label><input type="date" id="fHasta" onchange="applyFilters()"></div>
+    </div>
+    <div class="cmp-bar" id="cmpBar">
+      <span class="cmp-label">Comparar con:</span>
+      <div class="cmp-pill active" id="cmpNone" onclick="setCmpMode('none')"><div class="cmp-dot"></div>Sin comparación</div>
+      <div class="cmp-pill" id="cmpPrevMonth" onclick="setCmpMode('prevMonth')"><div class="cmp-dot"></div><span id="cmpPrevMonthLabel">Mes anterior</span></div>
+      <div class="cmp-pill" id="cmpPrevWeek" onclick="setCmpMode('prevWeek')"><div class="cmp-dot"></div>Semana anterior</div>
+      <div class="cmp-pill" id="cmpPrevYear" onclick="setCmpMode('prevYear')"><div class="cmp-dot"></div>Año anterior</div>
     </div>
   </div>
 
@@ -350,6 +374,7 @@ const COLORS=['#6366f1','#10b981','#f59e0b','#f43f5e','#0ea5e9','#8b5cf6','#06b6
 const MNAMES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 let rawArch=[],rawCode=[],filtered=[],charts={},currentPage='mom';
 let granMom='auto', granDiario='auto';
+let cmpMode='none';
 
 function pt(v){if(!v)return 0;const n=parseFloat(String(v).replace(/[$\s,]/g,''));return isNaN(n)?0:n;}
 function fmt(n){if(Math.abs(n)>=1e6)return '$'+(n/1e6).toFixed(2)+'M';if(Math.abs(n)>=1e3)return '$'+(n/1e3).toFixed(1)+'k';return '$'+Math.round(n).toLocaleString('es-MX');}
@@ -399,6 +424,70 @@ function getDateRange(){
   return Math.ceil((new Date(f.hasta)-new Date(f.desde))/86400000)+1;
 }
 
+// COMPARISON MODE
+function setCmpMode(mode){
+  cmpMode=mode;
+  document.querySelectorAll('.cmp-pill').forEach(p=>p.classList.remove('active'));
+  const ids={none:'cmpNone',prevMonth:'cmpPrevMonth',prevWeek:'cmpPrevWeek',prevYear:'cmpPrevYear'};
+  if(ids[mode]) document.getElementById(ids[mode]).classList.add('active');
+  if(filtered.length) renderMom();
+}
+
+function calcCmpDates(desde, hasta){
+  if(!desde||!hasta) return null;
+  const d0=new Date(desde), d1=new Date(hasta);
+  const spanMs=d1-d0;
+  const spanDays=Math.round(spanMs/86400000)+1;
+  if(cmpMode==='prevMonth'){
+    const cm=new Date(d0.getFullYear(), d0.getMonth()-1, 1);
+    const lastDayPrev=new Date(d0.getFullYear(), d0.getMonth(), 0);
+    const cmpD=cm.toISOString().slice(0,10);
+    const cmpH=lastDayPrev.toISOString().slice(0,10);
+    const lbl=cm.toLocaleString('es-MX',{month:'long',year:'numeric'});
+    document.getElementById('cmpPrevMonthLabel').textContent=lbl.charAt(0).toUpperCase()+lbl.slice(1);
+    return{desde:cmpD,hasta:cmpH};
+  }
+  if(cmpMode==='prevWeek'){
+    const c1=new Date(d1); c1.setDate(c1.getDate()-7);
+    const c0=new Date(d0); c0.setDate(c0.getDate()-7);
+    return{desde:c0.toISOString().slice(0,10),hasta:c1.toISOString().slice(0,10)};
+  }
+  if(cmpMode==='prevYear'){
+    const c0=new Date(d0); c0.setFullYear(c0.getFullYear()-1);
+    const c1=new Date(d1); c1.setFullYear(c1.getFullYear()-1);
+    return{desde:c0.toISOString().slice(0,10),hasta:c1.toISOString().slice(0,10)};
+  }
+  return null;
+}
+
+function getCmpFiltered(){
+  if(cmpMode==='none') return null;
+  const f=getF();
+  const cmpDates=calcCmpDates(f.desde,f.hasta);
+  if(!cmpDates) return null;
+  let pool=f.base==='archibrand'?rawArch:f.base==='codevaran'?rawCode:[...rawArch,...rawCode];
+  return pool.filter(r=>{
+    if(f.canal&&r.channel!==f.canal)return false;
+    if(f.marca&&r['items.product.brand']!==f.marca)return false;
+    if(f.estatus&&r.order_status!==f.estatus)return false;
+    if(f.orderType&&r.order_type!==f.orderType)return false;
+    if(f.tipo&&r.sales_type!==f.tipo)return false;
+    if(f.ful&&r.fulfillment_type!==f.ful)return false;
+    if(r.date_clean&&r.date_clean<cmpDates.desde)return false;
+    if(r.date_clean&&r.date_clean>cmpDates.hasta)return false;
+    return true;
+  });
+}
+
+function cmpDeltaHtml(curr, prev){
+  if(prev===null||prev===undefined) return '';
+  const d=pct(curr,prev);
+  if(d===null) return `<span class="kpi-cmp"><span class="neu">vs ${fmt(prev)} — sin datos</span></span>`;
+  const arrow=d>=0?'↑':'↓';
+  const cls=d>=0?'up':'dn';
+  return `<span class="kpi-cmp"><span class="${cls}">${arrow} ${Math.abs(d).toFixed(1)}%</span> vs ${fmt(prev)}</span>`;
+}
+
 function setGranMom(g){
   granMom=g;
   document.querySelectorAll('#page-mom .gran-btn').forEach(b=>{
@@ -424,7 +513,65 @@ function renderMomChart(){
   const agg=aggregateByGran(sales, gran, r=>r.total_iva);
   const labels=Object.keys(agg).sort();
   const data=labels.map(k=>Math.round(agg[k]||0));
-  mkChart('chartLineMom',{type:'line',data:{labels,datasets:[{label:'Ventas',data,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,0.07)',borderWidth:2,fill:true,tension:0.4,pointRadius:labels.length>60?0:2,pointHoverRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}},scales:{x:{...axS,ticks:{...axS.ticks,maxRotation:45,maxTicksLimit:gran==='day'?31:gran==='week'?12:12}},y:{...axS,ticks:{...axS.ticks,callback:v=>fmt(v)}}}}});
+
+  const datasets=[{
+    label:'Período actual',
+    data,
+    borderColor:'#6366f1',
+    backgroundColor:'rgba(99,102,241,0.07)',
+    borderWidth:2,
+    fill:true,
+    tension:0.4,
+    pointRadius:labels.length>60?0:2,
+    pointHoverRadius:5,
+    order:1
+  }];
+
+  // Add comparison line if mode is active
+  const cmpData=getCmpFiltered();
+  if(cmpData){
+    const cmpSales=cmpData.filter(r=>r.order_status==='Sale');
+    const cmpAgg=aggregateByGran(cmpSales, gran, r=>r.total_iva);
+    const cmpKeys=Object.keys(cmpAgg).sort();
+    // Align comparison data to same number of points as current period
+    const cmpData2=labels.map((_,i)=>{const k=cmpKeys[i];return k?Math.round(cmpAgg[k]||0):null;});
+    const cmpLabels={prevMonth:'Mes anterior',prevWeek:'Semana anterior',prevYear:'Año anterior'};
+    datasets.push({
+      label:cmpLabels[cmpMode]||'Comparación',
+      data:cmpData2,
+      borderColor:'#f59e0b',
+      backgroundColor:'transparent',
+      borderWidth:2,
+      borderDash:[5,4],
+      fill:false,
+      tension:0.4,
+      pointRadius:labels.length>60?0:2,
+      pointHoverRadius:5,
+      order:2
+    });
+  }
+
+  mkChart('chartLineMom',{
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{
+          display:cmpData!==null,
+          position:'top',
+          labels:{color:'#94a3b8',font:{size:11},padding:16,usePointStyle:true}
+        },
+        tooltip:{callbacks:{label:ctx=>' '+fmt(ctx.parsed.y)}}
+      },
+      scales:{
+        x:{...axS,ticks:{...axS.ticks,maxRotation:45,maxTicksLimit:gran==='day'?31:gran==='week'?12:12}},
+        y:{...axS,ticks:{...axS.ticks,callback:v=>fmt(v)}}
+      }
+    }
+  });
 }
 
 function renderDiarioChart(){
@@ -514,6 +661,7 @@ function clearFilters(){
   const all=[...rawArch,...rawCode];
   const dates=all.map(r=>r.date_clean).filter(Boolean).sort();
   if(dates.length){document.getElementById('fDesde').value=dates[0];document.getElementById('fHasta').value=dates[dates.length-1];}
+  setCmpMode('none');
   applyFilters();
 }
 
@@ -552,13 +700,25 @@ function renderMom(){
   const canceled=filtered.filter(r=>r.order_status==='Canceled');
   const cr=filtered.length?(canceled.length/filtered.length*100).toFixed(1):0;
 
+  // Comparison period
+  const cmpData=getCmpFiltered();
+  const cmpSales=cmpData?cmpData.filter(r=>r.order_status==='Sale'):null;
+  const cmpArch=cmpSales?cmpSales.filter(r=>r._base==='Archibrand'):null;
+  const cmpCode=cmpSales?cmpSales.filter(r=>r._base==='Codevaran'):null;
+  const cRaI=cmpArch?cmpArch.reduce((s,r)=>s+r.total_iva,0):null;
+  const cRcI=cmpCode?cmpCode.reduce((s,r)=>s+r.total_iva,0):null;
+  const cRtI=cmpSales?cmpSales.reduce((s,r)=>s+r.total_iva,0):null;
+  const cRtS=cRtI!==null?cRtI/IVA:null;
+  const cPzA=cmpArch?cmpArch.reduce((s,r)=>s+r.qty_n,0):null;
+  const cPzC=cmpCode?cmpCode.reduce((s,r)=>s+r.qty_n,0):null;
+
   document.getElementById('kpis-mom').innerHTML=`
-    <div class="kpi indigo"><div class="kpi-label">Ventas Archibrand</div><div class="kpi-value" style="color:var(--indigo)">${fmt(rAI)}</div><div class="kpi-sub">con IVA • ${oA.toLocaleString()} órdenes</div></div>
-    <div class="kpi rose"><div class="kpi-label">Ventas Codevaran</div><div class="kpi-value" style="color:var(--rose)">${fmt(rCI)}</div><div class="kpi-sub">con IVA • ${oC.toLocaleString()} órdenes</div></div>
-    <div class="kpi sky"><div class="kpi-label">Ventas Total</div><div class="kpi-value" style="color:var(--sky)">${fmt(rTI)}</div><div class="kpi-sub">con IVA</div></div>
-    <div class="kpi amber"><div class="kpi-label">Ventas sin IVA</div><div class="kpi-value" style="color:var(--amber)">${fmt(rTS)}</div><div class="kpi-sub">total / 1.16</div></div>
-    <div class="kpi indigo"><div class="kpi-label">Piezas Archibrand</div><div class="kpi-value" style="color:var(--indigo)">${Math.round(pzA).toLocaleString()}</div><div class="kpi-sub">ticket ${fmt(oA?rAI/oA:0)}</div></div>
-    <div class="kpi rose"><div class="kpi-label">Piezas Codevaran</div><div class="kpi-value" style="color:var(--rose)">${Math.round(pzC).toLocaleString()}</div><div class="kpi-sub">ticket ${fmt(oC?rCI/oC:0)}</div></div>
+    <div class="kpi indigo"><div class="kpi-label">Ventas Archibrand</div><div class="kpi-value" style="color:var(--indigo)">${fmt(rAI)}</div><div class="kpi-sub">con IVA • ${oA.toLocaleString()} órdenes</div>${cmpDeltaHtml(rAI,cRaI)}</div>
+    <div class="kpi rose"><div class="kpi-label">Ventas Codevaran</div><div class="kpi-value" style="color:var(--rose)">${fmt(rCI)}</div><div class="kpi-sub">con IVA • ${oC.toLocaleString()} órdenes</div>${cmpDeltaHtml(rCI,cRcI)}</div>
+    <div class="kpi sky"><div class="kpi-label">Ventas Total</div><div class="kpi-value" style="color:var(--sky)">${fmt(rTI)}</div><div class="kpi-sub">con IVA</div>${cmpDeltaHtml(rTI,cRtI)}</div>
+    <div class="kpi amber"><div class="kpi-label">Ventas sin IVA</div><div class="kpi-value" style="color:var(--amber)">${fmt(rTS)}</div><div class="kpi-sub">total / 1.16</div>${cmpDeltaHtml(rTS,cRtS)}</div>
+    <div class="kpi indigo"><div class="kpi-label">Piezas Archibrand</div><div class="kpi-value" style="color:var(--indigo)">${Math.round(pzA).toLocaleString()}</div><div class="kpi-sub">ticket ${fmt(oA?rAI/oA:0)}</div>${cmpDeltaHtml(pzA,cPzA)}</div>
+    <div class="kpi rose"><div class="kpi-label">Piezas Codevaran</div><div class="kpi-value" style="color:var(--rose)">${Math.round(pzC).toLocaleString()}</div><div class="kpi-sub">ticket ${fmt(oC?rCI/oC:0)}</div>${cmpDeltaHtml(pzC,cPzC)}</div>
     <div class="kpi ${parseFloat(cr)>5?'rose':'emerald'}"><div class="kpi-label">Tasa cancelación</div><div class="kpi-value" style="color:${parseFloat(cr)>5?'var(--rose)':'var(--emerald)'}">${cr}%</div><div class="kpi-sub">${canceled.length} canceladas</div></div>
   `;
 
