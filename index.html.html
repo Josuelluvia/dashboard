@@ -135,10 +135,13 @@ input[type=date]{background:var(--bg3);border:1px solid var(--border);color:var(
 .cmp-pill .cmp-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0;}
 .cmp-pill.active .cmp-dot{background:var(--indigo);}
 /* KPI delta line */
-.kpi-cmp{font-size:11px;color:var(--text3);margin-top:3px;}
-.kpi-cmp .up{color:var(--emerald);font-weight:700;}
-.kpi-cmp .dn{color:var(--rose);font-weight:700;}
-.kpi-cmp .neu{color:var(--text3);}
+.kpi-cmp-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid rgba(42,48,80,0.8);}
+.kpi-cmp-ant{font-size:11px;color:var(--text3);}
+.kpi-cmp-ant strong{color:#f59e0b;font-weight:600;}
+.kpi-cmp-delta{font-size:12px;font-weight:700;}
+.kpi-cmp-delta.up{color:var(--emerald);}
+.kpi-cmp-delta.dn{color:var(--rose);}
+.kpi-cmp-delta.neu{color:var(--text3);}
 /* Chart comparison legend */
 .cmp-legend{display:flex;align-items:center;gap:14px;font-size:11px;color:var(--text2);}
 .cmp-legend span{display:flex;align-items:center;gap:5px;}
@@ -218,9 +221,8 @@ input[type=date]{background:var(--bg3);border:1px solid var(--border);color:var(
     <div class="cmp-bar" id="cmpBar">
       <span class="cmp-label">Comparar con:</span>
       <div class="cmp-pill active" id="cmpNone" onclick="setCmpMode('none')"><div class="cmp-dot"></div>Sin comparación</div>
-      <div class="cmp-pill" id="cmpPrevMonth" onclick="setCmpMode('prevMonth')"><div class="cmp-dot"></div><span id="cmpPrevMonthLabel">Mes anterior</span></div>
-      <div class="cmp-pill" id="cmpPrevWeek" onclick="setCmpMode('prevWeek')"><div class="cmp-dot"></div>Semana anterior</div>
-      <div class="cmp-pill" id="cmpPrevYear" onclick="setCmpMode('prevYear')"><div class="cmp-dot"></div>Año anterior</div>
+      <div class="cmp-pill" id="cmpPrevSpan" onclick="setCmpMode('prevSpan')"><div class="cmp-dot"></div><span id="cmpPrevSpanLabel">Período anterior</span></div>
+      <div class="cmp-pill" id="cmpPrevYear" onclick="setCmpMode('prevYear')"><div class="cmp-dot"></div>Mismo período año anterior</div>
     </div>
   </div>
 
@@ -428,40 +430,26 @@ function getDateRange(){
 function setCmpMode(mode){
   cmpMode=mode;
   document.querySelectorAll('.cmp-pill').forEach(p=>p.classList.remove('active'));
-  const ids={none:'cmpNone',prevMonth:'cmpPrevMonth',prevWeek:'cmpPrevWeek',prevYear:'cmpPrevYear'};
+  const ids={none:'cmpNone',prevSpan:'cmpPrevSpan',prevYear:'cmpPrevYear'};
   if(ids[mode]) document.getElementById(ids[mode]).classList.add('active');
   if(filtered.length) renderMom();
 }
 
 function calcCmpDates(desde, hasta){
   if(!desde||!hasta) return null;
+  const pad=n=>String(n).padStart(2,'0');
+  const fmtLocal=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   const d0=new Date(desde), d1=new Date(hasta);
-  const spanMs=d1-d0;
-  const spanDays=Math.round(spanMs/86400000)+1;
-  if(cmpMode==='prevMonth'){
-    // d0.getMonth() is 0-based: abril=3, marzo=2, etc.
-    // prevMonth start = new Date(y, m-1, 1), end = new Date(y, m, 0)
-    // Use local date formatting to avoid UTC timezone shift
-    const y=d0.getFullYear(), m=d0.getMonth();
-    const prevStart=new Date(y, m-1, 1);
-    const prevEnd=new Date(y, m, 0);
-    const pad=n=>String(n).padStart(2,'0');
-    const cmpD=`${prevStart.getFullYear()}-${pad(prevStart.getMonth()+1)}-${pad(prevStart.getDate())}`;
-    const cmpH=`${prevEnd.getFullYear()}-${pad(prevEnd.getMonth()+1)}-${pad(prevEnd.getDate())}`;
-    const lbl=prevStart.toLocaleString('es-MX',{month:'long',year:'numeric'});
-    document.getElementById('cmpPrevMonthLabel').textContent=lbl.charAt(0).toUpperCase()+lbl.slice(1);
-    return{desde:cmpD,hasta:cmpH};
-  }
-  if(cmpMode==='prevWeek'){
-    const pad=n=>String(n).padStart(2,'0');
-    const fmtLocal=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-    const c0=new Date(d0); c0.setDate(c0.getDate()-7);
-    const c1=new Date(d1); c1.setDate(c1.getDate()-7);
-    return{desde:fmtLocal(c0),hasta:fmtLocal(c1)};
+  const spanDays=Math.round((d1-d0)/86400000)+1;
+  if(cmpMode==='prevSpan'){
+    // Exact span shifted back: if 1 apr→30 apr (30 days), compare 1 mar→31 mar
+    const cEnd=new Date(d0); cEnd.setDate(cEnd.getDate()-1);
+    const cStart=new Date(cEnd); cStart.setDate(cStart.getDate()-(spanDays-1));
+    const label=`${fmtLocal(cStart)} → ${fmtLocal(cEnd)}`;
+    document.getElementById('cmpPrevSpanLabel').textContent=`Período anterior (${spanDays}d)`;
+    return{desde:fmtLocal(cStart),hasta:fmtLocal(cEnd)};
   }
   if(cmpMode==='prevYear'){
-    const pad=n=>String(n).padStart(2,'0');
-    const fmtLocal=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
     const c0=new Date(d0); c0.setFullYear(c0.getFullYear()-1);
     const c1=new Date(d1); c1.setFullYear(c1.getFullYear()-1);
     return{desde:fmtLocal(c0),hasta:fmtLocal(c1)};
@@ -470,7 +458,7 @@ function calcCmpDates(desde, hasta){
 }
 
 function getCmpFiltered(){
-  if(cmpMode==='none') return null;
+  if(cmpMode==='none'||cmpMode==='') return null;
   const f=getF();
   const cmpDates=calcCmpDates(f.desde,f.hasta);
   if(!cmpDates) return null;
@@ -491,10 +479,10 @@ function getCmpFiltered(){
 function cmpDeltaHtml(curr, prev){
   if(prev===null||prev===undefined) return '';
   const d=pct(curr,prev);
-  if(d===null) return `<span class="kpi-cmp"><span class="neu">vs ${fmt(prev)} — sin datos</span></span>`;
-  const arrow=d>=0?'↑':'↓';
-  const cls=d>=0?'up':'dn';
-  return `<span class="kpi-cmp"><span class="${cls}">${arrow} ${Math.abs(d).toFixed(1)}%</span> vs ${fmt(prev)}</span>`;
+  const arrow=d===null?'':d>=0?'↑':'↓';
+  const dCls=d===null?'neu':d>=0?'up':'dn';
+  const dTxt=d===null?'—':`${arrow} ${Math.abs(d).toFixed(1)}%`;
+  return `<div class="kpi-cmp-row"><span class="kpi-cmp-ant">ant. <strong>${fmt(prev)}</strong></span><span class="kpi-cmp-delta ${dCls}">${dTxt}</span></div>`;
 }
 
 function setGranMom(g){
@@ -544,7 +532,9 @@ function renderMomChart(){
     const cmpKeys=Object.keys(cmpAgg).sort();
     // Align comparison data to same number of points as current period
     const cmpData2=labels.map((_,i)=>{const k=cmpKeys[i];return k?Math.round(cmpAgg[k]||0):null;});
-    const cmpLabels={prevMonth:'Mes anterior',prevWeek:'Semana anterior',prevYear:'Año anterior'};
+    const f2=getF();
+    const cmpDts=calcCmpDates(f2.desde,f2.hasta);
+    const cmpLabels={prevSpan:cmpDts?`${cmpDts.desde} → ${cmpDts.hasta}`:'Período anterior',prevYear:'Año anterior'};
     datasets.push({
       label:cmpLabels[cmpMode]||'Comparación',
       data:cmpData2,
